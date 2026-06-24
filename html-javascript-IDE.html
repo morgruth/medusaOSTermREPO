@@ -1,0 +1,416 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tryit Editor Pro</title>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/eclipse.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/dracula.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/monokai.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.css" />
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      background-color: #f5f5f5;
+      color: #333;
+      transition: background 0.3s, color 0.3s;
+    }
+
+    header {
+      background-color: #333;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 15px;
+      flex-wrap: wrap;
+    }
+
+    header h3 {
+      margin: 0;
+      font-size: 18px;
+    }
+
+    .buttons {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    button, select, input[type="range"] {
+      border: none;
+      padding: 6px 12px;
+      font-size: 14px;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+
+    button {
+      background-color: #04AA6D;
+      color: white;
+      transition: background 0.2s;
+    }
+    button:hover { background-color: #03895a; }
+
+    select { cursor: pointer; }
+    input[type="range"] { cursor: pointer; }
+
+    #container {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .CodeMirror {
+      width: 50%;
+      height: 100%;
+      font-size: 14px;
+    }
+
+    iframe {
+      width: 50%;
+      height: 100%;
+      border: none;
+      background: white;
+      transition: background 0.3s;
+    }
+
+    #dragbar {
+      width: 6px;
+      background: #ccc;
+      cursor: col-resize;
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-3px);
+      z-index: 10;
+      transition: background 0.2s;
+    }
+    #dragbar:hover { background: #aaa; }
+
+    /* Dropdown menu styling */
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content {
+      display: none;
+      position: absolute;
+      top: 100%;
+      right: 0;
+      background-color: #44475a;
+      min-width: 160px;
+      flex-direction: column;
+      box-shadow: 0px 8px 16px rgba(0,0,0,0.2);
+      border-radius: 4px;
+      overflow: hidden;
+      z-index: 100;
+    }
+    .dropdown:hover .dropdown-content { display: flex; }
+    .dropdown-content button {
+      background: none;
+      border: none;
+      color: #f8f8f2;
+      padding: 10px 16px;
+      text-align: left;
+      cursor: pointer;
+      font-size: 0.95rem;
+      width: 100%;
+      border-radius: 0;
+    }
+    .dropdown-content button:hover { background: #6272a4; }
+
+    #uploadBtn { display: none; }
+
+    @media (max-width: 768px) {
+      #container { flex-direction: column; }
+      .CodeMirror, iframe { width: 100%; height: 50%; }
+      #dragbar {
+        height: 6px;
+        width: 100%;
+        cursor: row-resize;
+        left: 0;
+        top: 50%;
+        transform: translateY(-3px);
+      }
+    }
+
+    body.dark {
+      background-color: #121212;
+      color: #ddd;
+    }
+    body.dark header { background-color: #1e1e1e; }
+    body.dark button { background-color: #007b55; }
+    body.dark iframe { background: #1e1e1e; }
+    body.dark #dragbar { background: #444; }
+    body.dark #dragbar:hover { background: #666; }
+    body.dark .dropdown-content { background-color: #1e1e1e; box-shadow: 0px 8px 16px rgba(0,0,0,0.5); }
+    body.dark .dropdown-content button:hover { background: #333; }
+  </style>
+</head>
+<body>
+  <header>
+    <h3>Tryit Editor Pro</h3>
+    <div class="buttons">
+      <button onclick="runCode()">▶️ Run</button>
+      <button onclick="toggleDark()">🌓 Theme Toggle</button>
+      <button onclick="resetCode()">🧹 Reset</button>
+
+      <select id="themeSelector" onchange="changeTheme(this.value)">
+        <option value="eclipse">Light (Eclipse)</option>
+        <option value="dracula">Dark (Dracula)</option>
+        <option value="monokai">Dark (Monokai)</option>
+        <option value="material">Dark (Material)</option>
+      </select>
+
+      <label style="color:inherit;">Font: <span id="fontSizeLabel">14</span>px</label>
+      <input type="range" id="fontSizeSlider" min="10" max="24" value="14" oninput="changeFontSize(this.value)">
+
+      <input type="file" id="uploadBtn" accept=".html,.js,.css,text/html" />
+      
+      <div class="dropdown">
+        <button class="dropbtn">Actions ⬇️</button>
+        <div class="dropdown-content">
+          <button onclick="saveCode()">💾 Save Code</button>
+          <button onclick="downloadCode()">⬇️ Download File</button>
+          <button onclick="formatCode()">✨ Format Code</button>
+          <button onclick="document.getElementById('uploadBtn').click()">📂 Upload File</button>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <div id="container">
+    <textarea id="code" spellcheck="false">
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial; background: #f0f0f0; text-align: center; padding-top: 30px; }
+    h2 { color: #04AA6D; }
+  </style>
+</head>
+<body>
+  <h2>Hello World!</h2>
+  <p>This Tryit Editor supports Dark Mode & Resizable Panels!</p>
+  <script>document.body.style.border = "2px solid #04AA6D";</script>
+</body>
+</html>
+    </textarea>
+
+    <div id="dragbar"></div>
+    <iframe id="output"></iframe>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/show-hint.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/hint/html-hint.min.js"></script>
+
+  <script src="https://unpkg.com/prettier@2.8.8/standalone.js"></script>
+  <script src="https://unpkg.com/prettier@2.8.8/parser-html.js"></script>
+  <script src="https://unpkg.com/prettier@2.8.8/parser-postcss.js"></script>
+  <script src="https://unpkg.com/prettier@2.8.8/parser-babel.js"></script>
+
+  <script>
+    const STORAGE_KEY = "tryitCode_pro";
+    const THEME_KEY = "tryitTheme_pro";
+    const uploadInput = document.getElementById('uploadBtn');
+
+    const editor = CodeMirror.fromTextArea(document.getElementById("code"), {
+      mode: "htmlmixed",
+      lineNumbers: true,
+      lineWrapping: true,
+      theme: localStorage.getItem(THEME_KEY) || "eclipse",
+      tabSize: 2,
+      indentUnit: 2,
+      smartIndent: true,
+      extraKeys: { "Ctrl-Space": "autocomplete" }
+    });
+
+    const defaultCode = `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: Arial; background: #f0f0f0; text-align: center; padding-top: 30px; }
+    h2 { color: #04AA6D; }
+  </style>
+</head>
+<body>
+  <h2>Hello World!</h2>
+  <p>This Tryit Editor supports Dark Mode & Resizable Panels!</p>
+  <script>document.body.style.border = "2px solid #04AA6D";<\/script>
+</body>
+</html>`;
+
+    // Run Code Architecture
+    function runCode() {
+      const code = editor.getValue();
+      const iframe = document.getElementById("output");
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.open();
+      doc.write(code);
+      doc.close();
+    }
+
+    // Themes
+    function toggleDark() {
+      document.body.classList.toggle("dark");
+      const theme = document.body.classList.contains("dark") ? "dracula" : "eclipse";
+      changeTheme(theme);
+    }
+
+    function changeTheme(theme) {
+      editor.setOption("theme", theme);
+      document.getElementById("themeSelector").value = theme;
+      localStorage.setItem(THEME_KEY, theme);
+      if (theme === "dracula" || theme === "monokai" || theme === "material") {
+        document.body.classList.add("dark");
+      } else {
+        document.body.classList.remove("dark");
+      }
+    }
+
+    function changeFontSize(size) {
+      editor.getWrapperElement().style.fontSize = size + "px";
+      document.getElementById("fontSizeLabel").textContent = size;
+      editor.refresh();
+    }
+
+    function resetCode() {
+      if (confirm("Reset to default code?")) {
+        editor.setValue(defaultCode);
+        runCode();
+      }
+    }
+
+    // Save and Download Operations
+    function saveCode() {
+      localStorage.setItem(STORAGE_KEY, editor.getValue());
+      alert('Code saved successfully!');
+    }
+
+    function downloadCode() {
+      const blob = new Blob([editor.getValue()], { type: 'text/html' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'index.html';
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    // Code Prettier Formatter Integration
+    function formatCode() {
+      try {
+        const formatted = prettier.format(editor.getValue(), {
+          parser: 'html',
+          plugins: prettierPlugins,
+          tabWidth: 2,
+          bracketSameLine: true
+        });
+        editor.setValue(formatted);
+      } catch (e) {
+        alert('Formatting failed: ' + e.message);
+      }
+    }
+
+    // File Upload handling
+    uploadInput.addEventListener('change', e => {
+      const file = e.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = evt => { 
+          editor.setValue(evt.target.result); 
+          runCode();
+        };
+        reader.readAsText(file);
+      }
+    });
+
+    // Auto-complete Trigger
+    editor.on('keyup', (cm, event) => {
+      if (!cm.state.completionActive && /^[a-zA-Z0-9_<.\/]$/.test(event.key)) {
+        CodeMirror.showHint(cm, CodeMirror.hint.html, { completeSingle: false });
+      }
+    });
+
+    // Draggable Divider Panels
+    const dragbar = document.getElementById("dragbar");
+    const container = document.getElementById("container");
+    const iframe = document.getElementById("output");
+    let dragging = false;
+
+    dragbar.addEventListener("mousedown", e => { e.preventDefault(); dragging = true; document.body.style.cursor = "col-resize"; });
+    window.addEventListener("mousemove", e => {
+      if (!dragging) return;
+      const rect = container.getBoundingClientRect();
+      if (window.innerWidth > 768) {
+        const pct = ((e.clientX - rect.left) / rect.width) * 100;
+        if (pct > 10 && pct < 90) { 
+          editor.getWrapperElement().style.width = pct + "%"; 
+          iframe.style.width = (100 - pct) + "%"; 
+          dragbar.style.left = pct + "%"; 
+        }
+      } else {
+        const pct = ((e.clientY - rect.top) / rect.height) * 100;
+        if (pct > 10 && pct < 90) { 
+          editor.getWrapperElement().style.height = pct + "%"; 
+          iframe.style.height = (100 - pct) + "%"; 
+          dragbar.style.top = pct + "%"; 
+        }
+      }
+    });
+    window.addEventListener("mouseup", () => { dragging = false; document.body.style.cursor = "default"; editor.refresh(); });
+
+    // Touch Support for Mobile Drag layouts
+    let touchDragging = false;
+    dragbar.addEventListener("touchstart", () => touchDragging = true);
+    window.addEventListener("touchmove", e => {
+      if (!touchDragging) return;
+      const touch = e.touches[0], rect = container.getBoundingClientRect();
+      if (window.innerWidth > 768) {
+        const pct = ((touch.clientX - rect.left) / rect.width) * 100;
+        if (pct > 10 && pct < 90) { editor.getWrapperElement().style.width = pct + "%"; iframe.style.width = (100 - pct) + "%"; dragbar.style.left = pct + "%"; }
+      } else {
+        const pct = ((touch.clientY - rect.top) / rect.height) * 100;
+        if (pct > 10 && pct < 90) { editor.getWrapperElement().style.height = pct + "%"; iframe.style.height = (100 - pct) + "%"; dragbar.style.top = pct + "%"; }
+      }
+    });
+    window.addEventListener("touchend", () => { touchDragging = false; editor.refresh(); });
+
+    // Auto-run, storage persistence lifecycle & keyboard routing
+    let typingTimer;
+    editor.on("change", () => { 
+      localStorage.setItem(STORAGE_KEY, editor.getValue());
+      clearTimeout(typingTimer); 
+      typingTimer = setTimeout(runCode, 1000); 
+    });
+
+    window.addEventListener("load", () => {
+      const savedCode = localStorage.getItem(STORAGE_KEY);
+      const savedTheme = localStorage.getItem(THEME_KEY);
+      if (savedCode) editor.setValue(savedCode);
+      if (savedTheme) changeTheme(savedTheme);
+      runCode();
+    });
+
+    window.addEventListener("keydown", (e) => { 
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { 
+        e.preventDefault(); 
+        runCode(); 
+      } 
+    });
+  </script>
+</body>
+</html>
