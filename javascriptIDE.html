@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JS IDE with Tabs & Dropdown Actions</title>
+
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/codemirror.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/theme/dracula.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/theme/monokai.min.css" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/show-hint.min.css" />
+
+<style>
+body {
+  margin: 0;
+  font-family: monospace;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: #282a36;
+  color: #f8f8f2;
+}
+
+/* Tabs */
+#tab-buttons {
+  display: flex;
+  background: #44475a;
+  border-bottom: 1px solid #6272a4;
+}
+.tab-btn {
+  flex: 1;
+  padding: 10px;
+  cursor: pointer;
+  background: #44475a;
+  border: none;
+  color: #f8f8f2;
+  font-size: 1rem;
+  transition: background 0.3s;
+}
+.tab-btn.active { background: #6272a4; }
+.tab-btn:hover { background: #7083c5; }
+
+/* Tab contents */
+.tab-content { flex: 1; display: none; overflow: hidden; flex-direction: column; }
+.tab-content.active { display: flex; }
+
+/* Editor & Console */
+#editor { flex: 1; height: 100%; }
+.CodeMirror { height: 100% !important; }
+#output { background: #1e1f29; color: #f8f8f2; padding: 10px; overflow-y: auto; white-space: pre-wrap; border-top: 1px solid #44475a; font-size: 0.9rem; flex: 1; }
+
+/* Controls & Dropdown */
+#controls {
+  padding: 10px;
+  background: #44475a;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+select, .dropbtn {
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background 0.3s;
+}
+
+select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; }
+.dropbtn { background: #6272a4; color: #fff; }
+.dropbtn:hover { background: #7083c5; }
+
+/* Dropdown menu */
+.dropdown { position: relative; display: inline-block; }
+.dropdown-content {
+  display: none;
+  position: absolute;
+  bottom: 100%; /* Opens upward so it doesn't get cut off at the page bottom */
+  left: 0;
+  background-color: #44475a;
+  min-width: 160px;
+  flex-direction: column;
+  box-shadow: 0px -8px 16px rgba(0,0,0,0.2);
+  border-radius: 6px;
+  overflow: hidden;
+  z-index: 10;
+  margin-bottom: 5px;
+}
+.dropdown:hover .dropdown-content { display: flex; }
+.dropdown-content button {
+  background: none;
+  border: none;
+  color: #f8f8f2;
+  padding: 10px 16px;
+  text-align: left;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+.dropdown-content button:hover { background: #6272a4; }
+
+/* Hidden file input */
+#uploadBtn { display: none; }
+
+/* Error highlights */
+.CodeMirror-linebackground-runtime-error { background: rgba(255,85,85,0.3) !important; }
+.CodeMirror-linebackground-lint-error { background: rgba(255,200,0,0.3) !important; }
+.lint-error { text-decoration: wavy underline red; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  #controls { flex-direction: column; align-items: stretch; }
+  select, .dropbtn { width: 100%; font-size: 1.1rem; }
+}
+</style>
+</head>
+<body>
+
+<div id="tab-buttons">
+  <button class="tab-btn active" data-tab="editor-tab">Editor</button>
+  <button class="tab-btn" data-tab="console-tab">Console</button>
+</div>
+
+<div id="editor-tab" class="tab-content active">
+  <div id="editor"></div>
+</div>
+<div id="console-tab" class="tab-content">
+  <div id="output"></div>
+</div>
+
+<div id="controls">
+  <select id="themeSelector">
+    <option value="dracula">Dracula</option>
+    <option value="default">Default</option>
+    <option value="monokai">Monokai</option>
+  </select>
+
+  <input type="file" id="uploadBtn" accept=".js,text/javascript" />
+
+  <div class="dropdown">
+    <button class="dropbtn">Actions ⬇️</button>
+    <div class="dropdown-content">
+      <button onclick="runCode()">▶️ Run</button>
+      <button onclick="clearOutput()">🧹 Clear</button>
+      <button onclick="saveCode()">💾 Save</button>
+      <button onclick="downloadCode()">⬇️ Download</button>
+      <button onclick="formatCode()">✨ Format</button>
+      <button onclick="document.getElementById('uploadBtn').click()">📂 Upload JS</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/mode/javascript/javascript.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/show-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/javascript-hint.min.js"></script>
+
+<script src="https://unpkg.com/prettier@2.8.8/standalone.js"></script>
+<script src="https://unpkg.com/prettier@2.8.8/parser-babel.js"></script>
+
+<script src="https://cdn.jsdelivr.net/npm/eslint-browser@7.32.0/eslint.js"></script>
+
+<script>
+const STORAGE_KEY='js_ide_code';
+const THEME_KEY='js_ide_theme';
+const outputDiv=document.getElementById('output');
+const themeSelector=document.getElementById('themeSelector');
+const uploadInput=document.getElementById('uploadBtn');
+
+// Initialize CodeMirror inside the layout wrapper
+const editor=CodeMirror(document.getElementById('editor'), {
+  mode:'javascript',
+  theme: localStorage.getItem(THEME_KEY)||'dracula',
+  lineNumbers:true,
+  gutters:["CodeMirror-linenumbers"],
+  extraKeys:{"Ctrl-Space":"autocomplete","Ctrl-Enter":()=>runCode()}
+});
+editor.setValue(localStorage.getItem(STORAGE_KEY)||'// Write JS here\nconsole.log("Hello, world!");');
+
+let errorLineHandles=[];
+let lintMarkers=[];
+
+function clearErrors(){
+  errorLineHandles.forEach(h=> {
+    try { editor.removeLineClass(h,'background','CodeMirror-linebackground-runtime-error'); } catch(e){}
+    try { editor.removeLineClass(h,'background','CodeMirror-linebackground-lint-error'); } catch(e){}
+  });
+  errorLineHandles=[];
+  lintMarkers.forEach(m=>m.clear());
+  lintMarkers=[];
+}
+
+function highlightErrorLine(error){
+  clearErrors();
+  let lineNumber=null;
+  const stack=error.stack||'';
+  const match=stack.match(/<anonymous>:(\d+):\d+/)||stack.match(/:(\d+):\d+/);
+  if(match) lineNumber=parseInt(match[1],10)-2; // Adjust for new Function execution context offset
+  
+  if(lineNumber!==null && lineNumber>=0 && lineNumber<editor.lineCount()){
+    const lineHandle=editor.getLineHandle(lineNumber);
+    editor.addLineClass(lineHandle,'background','CodeMirror-linebackground-runtime-error');
+    errorLineHandles.push(lineHandle);
+    outputDiv.textContent+=`\n❌ Error at line ${lineNumber+1}: ${error.message}\n`;
+  } else {
+    outputDiv.textContent+=`\n❌ Error: ${error.message}\n`;
+  }
+}
+
+// Intercept window console logs securely
+(function(){
+  const origLog=console.log;
+  console.log=function(...args){
+    const msg=args.map(a=>typeof a==='object'?JSON.stringify(a):String(a)).join(' ');
+    outputDiv.textContent+='📤 '+msg+'\n';
+    origLog.apply(console,args);
+    outputDiv.scrollTop=outputDiv.scrollHeight;
+  };
+})();
+
+// Tab Switch Logic
+const tabButtons=document.querySelectorAll('.tab-btn');
+const tabContents=document.querySelectorAll('.tab-content');
+tabButtons.forEach(btn=>{
+  btn.addEventListener('click',()=>{
+    tabContents.forEach(tc=>tc.classList.remove('active'));
+    tabButtons.forEach(b=>b.classList.remove('active'));
+    document.getElementById(btn.dataset.tab).classList.add('active');
+    btn.classList.add('active');
+    if(btn.dataset.tab === 'editor-tab') {
+      editor.refresh(); // Ensure CM recalculates sizing layout rules
+    }
+  });
+});
+
+function runCode(){
+  // Switch to output console display
+  tabContents.forEach(tc=>tc.classList.remove('active'));
+  tabButtons.forEach(b=>b.classList.remove('active'));
+  document.getElementById('console-tab').classList.add('active');
+  document.querySelector('.tab-btn[data-tab="console-tab"]').classList.add('active');
+
+  outputDiv.textContent='▶️ Running code...\n';
+  clearErrors();
+  const code=editor.getValue();
+  lintCode(code);
+  
+  try{
+    const result=new Function(code)();
+    if(result!==undefined) outputDiv.textContent+='✅ Result: '+result+'\n';
+    else outputDiv.textContent+='✅ Code executed.\n';
+  } catch(e){ highlightErrorLine(e); }
+  outputDiv.scrollTop=outputDiv.scrollHeight;
+}
+
+function clearOutput(){ outputDiv.textContent=''; clearErrors(); }
+function saveCode(){ localStorage.setItem(STORAGE_KEY,editor.getValue()); alert('Saved successfully!'); }
+function downloadCode(){ 
+  const blob=new Blob([editor.getValue()],{type:'text/javascript'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='script.js'; a.click(); URL.revokeObjectURL(a.href);
+}
+
+function formatCode(){ 
+  try{ 
+    const formatted = prettier.format(editor.getValue(),{parser:'babel',plugins:prettierPlugins,singleQuote:true,semi:true});
+    editor.setValue(formatted); 
+    outputDiv.textContent+='✨ Code formatted cleanly\n'; 
+  } catch(e){ 
+    outputDiv.textContent+='❌ Format failed: '+e.message+'\n'; 
+  }
+}
+
+function setTheme(theme){ editor.setOption('theme',theme); localStorage.setItem(THEME_KEY,theme); }
+const savedTheme=localStorage.getItem(THEME_KEY);
+if(savedTheme){ themeSelector.value=savedTheme; editor.setOption('theme',savedTheme); }
+themeSelector.addEventListener('change',()=>setTheme(themeSelector.value));
+
+uploadInput.addEventListener('change',e=>{
+  const file=e.target.files[0];
+  if(file){
+    const reader=new FileReader();
+    reader.onload=evt=>{ editor.setValue(evt.target.result); outputDiv.textContent+=`📥 Loaded file: ${file.name}\n`; };
+    reader.readAsText(file);
+  }
+});
+
+editor.on('keyup',(cm,event)=>{
+  if(!cm.state.completionActive && /^[a-zA-Z0-9_.]$/.test(event.key)){
+    setTimeout(()=>CodeMirror.showHint(cm,CodeMirror.hint.javascript,{completeSingle:false}),150);
+  }
+});
+
+// Linting with localized environment configurations
+function lintCode(code){
+  try{
+    if(!window.eslint) return;
+    const linter=new window.eslint.Linter();
+    const messages=linter.verify(code,{
+      rules:{semi:"warn", 'no-undef':"warn"},
+      env:{browser:true, es6:true}
+    });
+    messages.forEach(msg=>{
+      const line=msg.line-1;
+      const chStart=msg.column-1;
+      const chEnd=chStart+1;
+      if(line >= 0 && line < editor.lineCount()){
+        const handle=editor.getLineHandle(line);
+        editor.addLineClass(handle,'background','CodeMirror-linebackground-lint-error');
+        errorLineHandles.push(handle);
+        const marker=editor.markText({line,ch:chStart},{line,ch:chEnd},{className:'lint-error',title:msg.message});
+        lintMarkers.push(marker);
+      }
+      outputDiv.textContent+=`\n⚠️ Lint: Line ${msg.line}: ${msg.message}`;
+    });
+  }catch(e){ console.error(e); }
+}
+
+window.addEventListener('beforeunload',()=>{ localStorage.setItem(STORAGE_KEY,editor.getValue()); });
+</script>
+</body>
+</html>
