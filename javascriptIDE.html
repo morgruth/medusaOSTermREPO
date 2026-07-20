@@ -118,209 +118,256 @@ select { background: #44475a; color: #f8f8f2; border: 1px solid #6272a4; }
   select, .dropbtn { width: 100%; font-size: 1.1rem; }
 }
 </style>
-</head>
-<body>
+</head> 
+<body> 
+<div id="tab-buttons"> 
+  <button class="tab-btn active" data-tab="editor-tab">Editor</button> 
+  <button class="tab-btn" data-tab="console-tab">Console</button> 
+</div> 
+<div id="editor-tab" class="tab-content active"> 
+  <div id="editor"></div> 
+</div> 
+<div id="console-tab" class="tab-content"> 
+  <div id="output"></div> 
+</div> 
+<div id="controls"> 
+  <select id="themeSelector"> 
+    <option value="dracula">Dracula</option> 
+    <option value="default">Default</option> 
+    <option value="monokai">Monokai</option> 
+  </select> 
+  <!-- UPDATE 1: Accept .json files and application/json types -->
+  <input type="file" id="uploadBtn" accept=".js,text/javascript,.json,application/json" /> 
+  <div class="dropdown"> 
+    <button class="dropbtn">Actions ⬇️</button> 
+    <div class="dropdown-content"> 
+      <button onclick="runCode()">▶️ Run</button> 
+      <button onclick="clearOutput()">🧹 Clear</button> 
+      <button onclick="saveCode()">💾 Save</button> 
+      <button onclick="downloadCode()">⬇️ Download</button> 
+      <button onclick="formatCode()">✨ Format</button> 
+      <button onclick="document.getElementById('uploadBtn').click()">📂 Upload File</button> 
+    </div> 
+  </div> 
+</div> 
 
-<div id="tab-buttons">
-  <button class="tab-btn active" data-tab="editor-tab">Editor</button>
-  <button class="tab-btn" data-tab="console-tab">Console</button>
-</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/codemirror.min.js"></script> 
+<!-- UPDATE 2: Add JSON mode for syntax highlighting -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/mode/javascript/javascript.min.js"></script> 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/show-hint.min.js"></script> 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/javascript-hint.min.js"></script> 
+<script src="https://unpkg.com/prettier@2.8.8/standalone.js"></script> 
+<script src="https://unpkg.com/prettier@2.8.8/parser-babel.js"></script> 
+<script src="https://cdn.jsdelivr.net/npm/eslint-browser@7.32.0/eslint.js"></script> 
+<script> 
+const STORAGE_KEY='js_ide_code'; 
+const THEME_KEY='js_ide_theme'; 
+const FILE_TYPE_KEY='js_ide_file_type'; // Track if it's JS or JSON
+const outputDiv=document.getElementById('output'); 
+const themeSelector=document.getElementById('themeSelector'); 
+const uploadInput=document.getElementById('uploadBtn'); 
 
-<div id="editor-tab" class="tab-content active">
-  <div id="editor"></div>
-</div>
-<div id="console-tab" class="tab-content">
-  <div id="output"></div>
-</div>
+// Initialize CodeMirror inside the layout wrapper 
+const editor=CodeMirror(document.getElementById('editor'), { 
+  mode: localStorage.getItem(FILE_TYPE_KEY) || 'javascript', 
+  theme: localStorage.getItem(THEME_KEY)||'dracula', 
+  lineNumbers:true, 
+  gutters:["CodeMirror-linenumbers"], 
+  extraKeys:{"Ctrl-Space":"autocomplete","Ctrl-Enter":()=>runCode()} 
+}); 
+editor.setValue(localStorage.getItem(STORAGE_KEY)||'// Write JS here\nconsole.log("Hello, world!");'); 
 
-<div id="controls">
-  <select id="themeSelector">
-    <option value="dracula">Dracula</option>
-    <option value="default">Default</option>
-    <option value="monokai">Monokai</option>
-  </select>
+let errorLineHandles=[]; 
+let lintMarkers=[]; 
 
-  <input type="file" id="uploadBtn" accept=".js,text/javascript" />
+function clearErrors(){ 
+  errorLineHandles.forEach(h=> { 
+    try { editor.removeLineClass(h,'background','CodeMirror-linebackground-runtime-error'); } catch(e){} 
+    try { editor.removeLineClass(h,'background','CodeMirror-linebackground-lint-error'); } catch(e){} 
+  }); 
+  errorLineHandles=[]; 
+  lintMarkers.forEach(m=>m.clear()); 
+  lintMarkers=[]; 
+} 
 
-  <div class="dropdown">
-    <button class="dropbtn">Actions ⬇️</button>
-    <div class="dropdown-content">
-      <button onclick="runCode()">▶️ Run</button>
-      <button onclick="clearOutput()">🧹 Clear</button>
-      <button onclick="saveCode()">💾 Save</button>
-      <button onclick="downloadCode()">⬇️ Download</button>
-      <button onclick="formatCode()">✨ Format</button>
-      <button onclick="document.getElementById('uploadBtn').click()">📂 Upload JS</button>
-    </div>
-  </div>
-</div>
+function highlightErrorLine(error){ 
+  clearErrors(); 
+  let lineNumber=null; 
+  const stack=error.stack||''; 
+  const match=stack.match(/<anonymous>:(\d+):\d+/)||stack.match(/:(\d+):\d+/); 
+  if(match) lineNumber=parseInt(match[1],10)-2; 
+  if(lineNumber!==null && lineNumber>=0 && lineNumber<editor.lineCount()){ 
+    const lineHandle=editor.getLineHandle(lineNumber); 
+    editor.addLineClass(lineHandle,'background','CodeMirror-linebackground-runtime-error'); 
+    errorLineHandles.push(lineHandle); 
+    outputDiv.textContent+=`\n❌ Error at line ${lineNumber+1}: ${error.message}\n`; 
+  } else { 
+    outputDiv.textContent+=`\n❌ Error: ${error.message}\n`; 
+  } 
+} 
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/codemirror.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/mode/javascript/javascript.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/show-hint.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.9/addon/hint/javascript-hint.min.js"></script>
+// Intercept window console logs securely 
+(function(){ 
+  const origLog=console.log; 
+  console.log=function(...args){ 
+    const msg=args.map(a=>typeof a==='object'?JSON.stringify(a):String(a)).join(' '); 
+    outputDiv.textContent+='📤 '+msg+'\n'; 
+    origLog.apply(console,args); 
+    outputDiv.scrollTop=outputDiv.scrollHeight; 
+  }; 
+})(); 
 
-<script src="https://unpkg.com/prettier@2.8.8/standalone.js"></script>
-<script src="https://unpkg.com/prettier@2.8.8/parser-babel.js"></script>
+// Tab Switch Logic 
+const tabButtons=document.querySelectorAll('.tab-btn'); 
+const tabContents=document.querySelectorAll('.tab-content'); 
+tabButtons.forEach(btn=>{ 
+  btn.addEventListener('click',()=>{ 
+    tabContents.forEach(tc=>tc.classList.remove('active')); 
+    tabButtons.forEach(b=>b.classList.remove('active')); 
+    document.getElementById(btn.dataset.tab).classList.add('active'); 
+    btn.classList.add('active'); 
+    if(btn.dataset.tab === 'editor-tab') { 
+      editor.refresh(); 
+    } 
+  }); 
+}); 
 
-<script src="https://cdn.jsdelivr.net/npm/eslint-browser@7.32.0/eslint.js"></script>
-
-<script>
-const STORAGE_KEY='js_ide_code';
-const THEME_KEY='js_ide_theme';
-const outputDiv=document.getElementById('output');
-const themeSelector=document.getElementById('themeSelector');
-const uploadInput=document.getElementById('uploadBtn');
-
-// Initialize CodeMirror inside the layout wrapper
-const editor=CodeMirror(document.getElementById('editor'), {
-  mode:'javascript',
-  theme: localStorage.getItem(THEME_KEY)||'dracula',
-  lineNumbers:true,
-  gutters:["CodeMirror-linenumbers"],
-  extraKeys:{"Ctrl-Space":"autocomplete","Ctrl-Enter":()=>runCode()}
-});
-editor.setValue(localStorage.getItem(STORAGE_KEY)||'// Write JS here\nconsole.log("Hello, world!");');
-
-let errorLineHandles=[];
-let lintMarkers=[];
-
-function clearErrors(){
-  errorLineHandles.forEach(h=> {
-    try { editor.removeLineClass(h,'background','CodeMirror-linebackground-runtime-error'); } catch(e){}
-    try { editor.removeLineClass(h,'background','CodeMirror-linebackground-lint-error'); } catch(e){}
-  });
-  errorLineHandles=[];
-  lintMarkers.forEach(m=>m.clear());
-  lintMarkers=[];
-}
-
-function highlightErrorLine(error){
-  clearErrors();
-  let lineNumber=null;
-  const stack=error.stack||'';
-  const match=stack.match(/<anonymous>:(\d+):\d+/)||stack.match(/:(\d+):\d+/);
-  if(match) lineNumber=parseInt(match[1],10)-2; // Adjust for new Function execution context offset
+// UPDATE 3: Modify execution to evaluate JSON validation vs JS running
+function runCode(){ 
+  tabContents.forEach(tc=>tc.classList.remove('active')); 
+  tabButtons.forEach(b=>b.classList.remove('active')); 
+  document.getElementById('console-tab').classList.add('active'); 
+  document.querySelector('.tab-btn[data-tab="console-tab"]').classList.add('active'); 
+  outputDiv.textContent='▶️ Processing file...\n'; 
+  clearErrors(); 
   
-  if(lineNumber!==null && lineNumber>=0 && lineNumber<editor.lineCount()){
-    const lineHandle=editor.getLineHandle(lineNumber);
-    editor.addLineClass(lineHandle,'background','CodeMirror-linebackground-runtime-error');
-    errorLineHandles.push(lineHandle);
-    outputDiv.textContent+=`\n❌ Error at line ${lineNumber+1}: ${error.message}\n`;
-  } else {
-    outputDiv.textContent+=`\n❌ Error: ${error.message}\n`;
-  }
-}
+  const code=editor.getValue(); 
+  const currentMode = editor.getOption('mode');
 
-// Intercept window console logs securely
-(function(){
-  const origLog=console.log;
-  console.log=function(...args){
-    const msg=args.map(a=>typeof a==='object'?JSON.stringify(a):String(a)).join(' ');
-    outputDiv.textContent+='📤 '+msg+'\n';
-    origLog.apply(console,args);
-    outputDiv.scrollTop=outputDiv.scrollHeight;
-  };
-})();
-
-// Tab Switch Logic
-const tabButtons=document.querySelectorAll('.tab-btn');
-const tabContents=document.querySelectorAll('.tab-content');
-tabButtons.forEach(btn=>{
-  btn.addEventListener('click',()=>{
-    tabContents.forEach(tc=>tc.classList.remove('active'));
-    tabButtons.forEach(b=>b.classList.remove('active'));
-    document.getElementById(btn.dataset.tab).classList.add('active');
-    btn.classList.add('active');
-    if(btn.dataset.tab === 'editor-tab') {
-      editor.refresh(); // Ensure CM recalculates sizing layout rules
+  if(currentMode === 'application/json') {
+    try {
+      JSON.parse(code);
+      outputDiv.textContent+='✅ Valid JSON structure!\n';
+    } catch(e) {
+      outputDiv.textContent+=`❌ Invalid JSON: ${e.message}\n`;
     }
-  });
-});
+  } else {
+    lintCode(code); 
+    try{ 
+      const result=new Function(code)(); 
+      if(result!==undefined) outputDiv.textContent+='✅ Result: '+result+'\n'; 
+      else outputDiv.textContent+='✅ Code executed.\n'; 
+    } catch(e){ 
+      highlightErrorLine(e); 
+    } 
+  }
+  outputDiv.scrollTop=outputDiv.scrollHeight; 
+} 
 
-function runCode(){
-  // Switch to output console display
-  tabContents.forEach(tc=>tc.classList.remove('active'));
-  tabButtons.forEach(b=>b.classList.remove('active'));
-  document.getElementById('console-tab').classList.add('active');
-  document.querySelector('.tab-btn[data-tab="console-tab"]').classList.add('active');
+function clearOutput(){ 
+  outputDiv.textContent=''; 
+  clearErrors(); 
+} 
 
-  outputDiv.textContent='▶️ Running code...\n';
-  clearErrors();
-  const code=editor.getValue();
-  lintCode(code);
-  
-  try{
-    const result=new Function(code)();
-    if(result!==undefined) outputDiv.textContent+='✅ Result: '+result+'\n';
-    else outputDiv.textContent+='✅ Code executed.\n';
-  } catch(e){ highlightErrorLine(e); }
-  outputDiv.scrollTop=outputDiv.scrollHeight;
-}
+function saveCode(){ 
+  localStorage.setItem(STORAGE_KEY,editor.getValue()); 
+  localStorage.setItem(FILE_TYPE_KEY,editor.getOption('mode'));
+  alert('Saved successfully!'); 
+} 
 
-function clearOutput(){ outputDiv.textContent=''; clearErrors(); }
-function saveCode(){ localStorage.setItem(STORAGE_KEY,editor.getValue()); alert('Saved successfully!'); }
+// UPDATE 4: Handle downloads with dynamic extension matching file type
 function downloadCode(){ 
-  const blob=new Blob([editor.getValue()],{type:'text/javascript'});
-  const a=document.createElement('a'); a.href=URL.createObjectURL(blob); a.download='script.js'; a.click(); URL.revokeObjectURL(a.href);
-}
+  const isJson = editor.getOption('mode') === 'application/json';
+  const type = isJson ? 'application/json' : 'text/javascript';
+  const filename = isJson ? 'data.json' : 'script.js';
 
+  const blob=new Blob([editor.getValue()],{type: type}); 
+  const a=document.createElement('a'); 
+  a.href=URL.createObjectURL(blob); 
+  a.download=filename; 
+  a.click(); 
+  URL.revokeObjectURL(a.href); 
+} 
+
+// UPDATE 5: Format using Prettier built-in json parser if needed
 function formatCode(){ 
   try{ 
-    const formatted = prettier.format(editor.getValue(),{parser:'babel',plugins:prettierPlugins,singleQuote:true,semi:true});
+    const isJson = editor.getOption('mode') === 'application/json';
+    const parserType = isJson ? 'json' : 'babel';
+    const formatted = prettier.format(editor.getValue(),{parser: parserType, plugins:prettierPlugins, singleQuote: !isJson, semi:true}); 
     editor.setValue(formatted); 
     outputDiv.textContent+='✨ Code formatted cleanly\n'; 
   } catch(e){ 
     outputDiv.textContent+='❌ Format failed: '+e.message+'\n'; 
-  }
-}
+  } 
+} 
 
-function setTheme(theme){ editor.setOption('theme',theme); localStorage.setItem(THEME_KEY,theme); }
-const savedTheme=localStorage.getItem(THEME_KEY);
-if(savedTheme){ themeSelector.value=savedTheme; editor.setOption('theme',savedTheme); }
-themeSelector.addEventListener('change',()=>setTheme(themeSelector.value));
+function setTheme(theme){ 
+  editor.setOption('theme',theme); 
+  localStorage.setItem(THEME_KEY,theme); 
+} 
 
-uploadInput.addEventListener('change',e=>{
-  const file=e.target.files[0];
-  if(file){
-    const reader=new FileReader();
-    reader.onload=evt=>{ editor.setValue(evt.target.result); outputDiv.textContent+=`📥 Loaded file: ${file.name}\n`; };
-    reader.readAsText(file);
-  }
-});
+const savedTheme=localStorage.getItem(THEME_KEY); 
+if(savedTheme){ 
+  themeSelector.value=savedTheme; 
+  editor.setOption('theme',savedTheme); 
+} 
+themeSelector.addEventListener('change',()=>setTheme(themeSelector.value)); 
 
-editor.on('keyup',(cm,event)=>{
-  if(!cm.state.completionActive && /^[a-zA-Z0-9_.]$/.test(event.key)){
-    setTimeout(()=>CodeMirror.showHint(cm,CodeMirror.hint.javascript,{completeSingle:false}),150);
-  }
-});
-
-// Linting with localized environment configurations
-function lintCode(code){
-  try{
-    if(!window.eslint) return;
-    const linter=new window.eslint.Linter();
-    const messages=linter.verify(code,{
-      rules:{semi:"warn", 'no-undef':"warn"},
-      env:{browser:true, es6:true}
-    });
-    messages.forEach(msg=>{
-      const line=msg.line-1;
-      const chStart=msg.column-1;
-      const chEnd=chStart+1;
-      if(line >= 0 && line < editor.lineCount()){
-        const handle=editor.getLineHandle(line);
-        editor.addLineClass(handle,'background','CodeMirror-linebackground-lint-error');
-        errorLineHandles.push(handle);
-        const marker=editor.markText({line,ch:chStart},{line,ch:chEnd},{className:'lint-error',title:msg.message});
-        lintMarkers.push(marker);
+// UPDATE 6: Detect uploaded file extensions dynamically 
+uploadInput.addEventListener('change',e=>{ 
+  const file=e.target.files[0]; 
+  if(file){ 
+    const reader=new FileReader(); 
+    reader.onload=evt=>{ 
+      if(file.name.endsWith('.json')) {
+        editor.setOption('mode', 'application/json');
+      } else {
+        editor.setOption('mode', 'javascript');
       }
-      outputDiv.textContent+=`\n⚠️ Lint: Line ${msg.line}: ${msg.message}`;
-    });
-  }catch(e){ console.error(e); }
-}
+      editor.setValue(evt.target.result); 
+      outputDiv.textContent+=`📥 Loaded file: ${file.name}\n`; 
+    }; 
+    reader.readAsText(file); 
+  } 
+}); 
 
-window.addEventListener('beforeunload',()=>{ localStorage.setItem(STORAGE_KEY,editor.getValue()); });
-</script>
-</body>
+editor.on('keyup',(cm,event)=>{ 
+  if(cm.getOption('mode') === 'javascript' && !cm.state.completionActive && /^[a-zA-Z0-9_.]$/.test(event.key)){ 
+    setTimeout(()=>CodeMirror.showHint(cm,CodeMirror.hint.javascript,{completeSingle:false}),150); 
+  } 
+}); 
+
+function lintCode(code){ 
+  try{ 
+    if(!window.eslint) return; 
+    const linter=new window.eslint.Linter(); 
+    const messages=linter.verify(code,{ 
+      rules:{semi:"warn", 'no-undef':"warn"}, 
+      env:{browser:true, es6:true} 
+    }); 
+    messages.forEach(msg=>{ 
+      const line=msg.line-1; 
+      const chStart=msg.column-1; 
+      const chEnd=chStart+1; 
+      if(line >= 0 && line < editor.lineCount()){ 
+        const handle=editor.getLineHandle(line); 
+        editor.addLineClass(handle,'background','CodeMirror-linebackground-lint-error'); 
+        errorLineHandles.push(handle); 
+        const marker=editor.markText({line,ch:chStart},{line,ch:chEnd},{className:'lint-error',title:msg.message}); 
+        lintMarkers.push(marker); 
+      } 
+      outputDiv.textContent+=`\n⚠️ Lint: Line ${msg.line}: ${msg.message}`; 
+    }); 
+  }catch(e){ 
+    console.error(e); 
+  } 
+} 
+
+window.addEventListener('beforeunload',()=>{ 
+  localStorage.setItem(STORAGE_KEY,editor.getValue()); 
+  localStorage.setItem(FILE_TYPE_KEY,editor.getOption('mode'));
+}); 
+</script> 
+</body> 
 </html>
